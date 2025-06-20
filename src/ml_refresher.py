@@ -86,10 +86,48 @@ display(model.summary.predictions)
 # COMMAND ----------
 
 # DBTITLE 1,Predicts Calories Burned
-from pyspark.ml.feature import StringIndexer, VectorAssembler
-from pyspark.ml.regression import LinearRegression
+from pyspark.ml.feature import StringIndexer, VectorAssembler, OneHotEncoder
+from pyspark.ml.regression import RandomForestRegressor
 from pyspark.ml import Pipeline
 from pyspark.sql.functions import col
+
+# Load data
+df = spark.table("bronze.fitness_tracker_data").select("Steps", "Heart_Rate_avg", "Workout_Type", "Calories_Burned")
+
+# Handle missing values
+df = df.dropna()
+
+# Filter out invalid data
+df = df.filter((col("Steps") >= 0) & (col("Heart_Rate_avg") > 0) & (col("Calories_Burned") >= 0))
+
+# Index categorical column
+indexer = StringIndexer(inputCol="Workout_Type", outputCol="Workout_Type_Indexed", handleInvalid="skip")
+encoder = OneHotEncoder(inputCol="Workout_Type_Indexed", outputCol="Workout_Type_OHE", handleInvalid="keep")
+
+# Assemble features
+assembler = VectorAssembler(inputCols=["Steps", "Heart_Rate_avg", "Workout_Type_OHE"], outputCol="features", handleInvalid="skip")
+
+# Define regressor
+rf = RandomForestRegressor(featuresCol="features", labelCol="Calories_Burned", seed=42)
+
+# Create pipeline
+pipeline = Pipeline(stages=[indexer, encoder, assembler, rf])
+
+# Split data into training and test sets
+train_df, test_df = df.randomSplit([0.8, 0.2], seed=42)
+
+# Train model
+model = pipeline.fit(train_df)
+
+# Make predictions on the entire dataset
+predictions = model.transform(df)
+
+# Display predictions vs actual Calories_Burned
+display(predictions.withColumn("Diff", col("Calories_Burned") - col("prediction")))
+
+# COMMAND ----------
+
+from pyspark.ml.evaluation import RegressionEvaluator
 
 # Load data
 df = spark.table("bronze.fitness_tracker_data").select("Steps", "Heart_Rate_avg", "Workout_Type", "Calories_Burned")
@@ -112,11 +150,28 @@ lr = LinearRegression(featuresCol="features", labelCol="Calories_Burned")
 # Create pipeline
 pipeline = Pipeline(stages=[indexer, assembler, lr])
 
-# Train model
-model = pipeline.fit(df)
+# Split data into training and test sets
+train_df, test_df = df.randomSplit([0.8, 0.2], seed=42)
 
-# Display model summary
-display(model.summary)
+# Train model
+model = pipeline.fit(train_df)
+
+# Make predictions
+predictions = model.transform(test_df)
+
+# Initialize evaluators
+evaluator_rmse = RegressionEvaluator(predictionCol="prediction", labelCol="Calories_Burned", metricName="rmse")
+evaluator_r2 = RegressionEvaluator(predictionCol="prediction", labelCol="Calories_Burned", metricName="r2")
+evaluator_mae = RegressionEvaluator(predictionCol="prediction", labelCol="Calories_Burned", metricName="mae")
+
+# Calculate metrics
+rmse = evaluator_rmse.evaluate(predictions)
+r2 = evaluator_r2.evaluate(predictions)
+mae = evaluator_mae.evaluate(predictions)
+
+# Display metrics
+metrics_df = spark.createDataFrame([(rmse, r2, mae)], ["RMSE", "R2", "MAE"])
+display(metrics_df)
 
 # COMMAND ----------
 
@@ -124,7 +179,8 @@ display(model.summary)
 from pyspark.ml.feature import StringIndexer, VectorAssembler
 from pyspark.ml.classification import RandomForestClassifier
 from pyspark.ml import Pipeline
-from pyspark.sql.functions import col
+from pyspark.sql.functions import col, udf
+from pyspark.sql.types import StringType
 
 # Load data
 df = spark.table("bronze.fitness_tracker_data").select("Steps", "Heart_Rate_avg", "Calories_Burned", "Workout_Type")
@@ -150,7 +206,20 @@ pipeline = Pipeline(stages=[label_indexer, assembler, rf])
 # Train model
 model = pipeline.fit(df)
 
-display(model.transform(df).select("Steps", "Heart_Rate_avg", "Calories_Burned", "Workout_Type", "prediction"))
+# label map
+label_map = {i: label for i, label in enumerate(model.stages[0].labels)}
+
+# UDF to map prediction to label
+map_prediction_udf = udf(lambda x: label_map.get(int(x), "Unknown"), StringType())
+
+# Transform and add predicted label column
+predictions = model.transform(df).withColumn("predicted_label", map_prediction_udf(col("prediction")))
+
+display(predictions.select("Steps", "Heart_Rate_avg", "Calories_Burned", "Workout_Type", "prediction", "predicted_label"))
+
+# COMMAND ----------
+
+label_map = {i: label for i, label in enumerate(model.stages[0].labels)}
 
 # COMMAND ----------
 
