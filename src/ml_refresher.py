@@ -225,6 +225,12 @@ display(predictions.select("Steps", "Heart_Rate_avg", "Calories_Burned", "Workou
 
 # COMMAND ----------
 
+# MAGIC %md
+# MAGIC ## Shap Test
+
+# COMMAND ----------
+
+# DBTITLE 1,SHAP Summary Plot for Model Predictions
 import shap
 import numpy as np
 from pyspark.ml.linalg import DenseVector
@@ -257,6 +263,11 @@ else:
 
 # COMMAND ----------
 
+# MAGIC %md
+# MAGIC ## Kolmogorov-Smirnov (KS) Test
+
+# COMMAND ----------
+
 # DBTITLE 1,Normality Test on Fitness Tracker Data Columns
 from scipy.stats import kstest
 import numpy as np
@@ -285,6 +296,7 @@ for col_name in columns_to_test:
 from scipy.stats import ks_2samp
 import pandas as pd
 
+df = spark.table("bronze.fitness_tracker_data").select("Steps", "Heart_Rate_avg", "Calories_Burned", "Workout_Type")
 workout_types = ["Cardio", "Strength", "Yoga", "None"]
 columns_to_test = ["Steps", "Heart_Rate_avg", "Calories_Burned"]
 
@@ -312,24 +324,88 @@ display(results_df)
 
 # COMMAND ----------
 
-from pyspark.sql.functions import expr
-from pyspark.ml.evaluation import BinaryClassificationEvaluator
+# DBTITLE 1,Jensen-Shannon Divergence Between Workout Types
+from scipy.spatial.distance import jensenshannon
+import numpy as np
+import pandas as pd
 
-# Select the true labels and predicted probabilities
-ks_df = predictions.select("label", expr("probability[1]").alias("probability"))
+df = spark.table("bronze.fitness_tracker_data").select("Steps", "Heart_Rate_avg", "Calories_Burned", "Workout_Type")
+workout_types = ["Cardio", "Strength", "Yoga", "None"]
+columns_to_test = ["Steps", "Heart_Rate_avg", "Calories_Burned"]
 
-# Initialize BinaryClassificationEvaluator for KS test
-evaluator = BinaryClassificationEvaluator(rawPredictionCol="probability", labelCol="label", metricName="areaUnderROC")
+results_jsd = []
 
-# Compute KS metric
-ks_metric = evaluator.evaluate(ks_df)
+for col in columns_to_test:
+    for i in range(len(workout_types)):
+        for j in range(i + 1, len(workout_types)):
+            # Extract values for each group
+            data_1 = df.filter(df.Workout_Type == workout_types[i]).toPandas()[col]
+            data_2 = df.filter(df.Workout_Type == workout_types[j]).toPandas()[col]
+            
+            # Remove NaNs if present
+            data_1 = data_1.dropna()
+            data_2 = data_2.dropna()
+            
+            # Bin the data to create comparable distributions (histograms)
+            min_val = min(data_1.min(), data_2.min())
+            max_val = max(data_1.max(), data_2.max())
+            bins = np.linspace(min_val, max_val, 31)  # 30 bins
 
-# Display KS metric
-display(spark.createDataFrame([(ks_metric,)], ["KS_Metric"]))
+            hist_1, _ = np.histogram(data_1, bins=bins, density=True)
+            hist_2, _ = np.histogram(data_2, bins=bins, density=True)
+            
+            # Add small epsilon for 0–avoid log(0)
+            epsilon = 1e-12
+            hist_1 += epsilon
+            hist_2 += epsilon
+
+            # Normalize histograms to probability distributions
+            p = hist_1 / np.sum(hist_1)
+            q = hist_2 / np.sum(hist_2)
+            
+            # Compute JSD (returns square root of divergence for scipy >=1.6.0)
+            jsd = jensenshannon(p, q, base=2)
+            divergence = jsd**2  # True JSD, in [0,1]; jsd is sqrt(JSD)
+            
+            results_jsd.append({
+                "Comparison": f"{workout_types[i]} vs {workout_types[j]}",
+                "Column": col,
+                "JSD": divergence  # use jsd if you want sqrt(JSD), divergence for JSD proper
+            })
+
+# Results to DataFrame
+results_df = pd.DataFrame(results_jsd)
+def interpret_jsd(jsd):
+    if jsd < 0.05:
+        return "Very similar"
+    elif jsd < 0.2:
+        return "Somewhat different"
+    else:
+        return "Noticeably different"
+
+results_df["Divergence"] = results_df["JSD"].apply(interpret_jsd)
+display(results_df)
 
 # COMMAND ----------
 
-# TODO
-#  Kolmogorov-Smirnov (KS) Test
-#  Jensen-Shannon Divergence (JSD)
+# DBTITLE 1,KDE Plots of Fitness Data by Workout Type
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+df = spark.table("bronze.fitness_tracker_data").select("Steps", "Heart_Rate_avg", "Calories_Burned", "Workout_Type")
+workout_types = ["Cardio", "Strength", "Yoga", "None"]
+columns_to_test = ["Steps", "Heart_Rate_avg", "Calories_Burned"]
+
+for col in columns_to_test:
+    for w in workout_types:
+        sample = df.filter(df.Workout_Type == w).toPandas()[col]
+        sns.kdeplot(sample, label=w)
+
+    plt.title(f"Distribution of {col} by Workout Type")
+    plt.xlabel(col)
+    plt.legend()
+    plt.show()
+
+# COMMAND ----------
+
 #  Chi-square Test
