@@ -257,6 +257,78 @@ else:
 
 # COMMAND ----------
 
+# DBTITLE 1,Normality Test on Fitness Tracker Data Columns
+from scipy.stats import kstest
+import numpy as np
+
+# Load data
+df = spark.table("bronze.fitness_tracker_data").select("Steps", "Heart_Rate_avg", "Calories_Burned", "Workout_Type")
+columns_to_test = ["Steps", "Heart_Rate_avg", "Calories_Burned"]
+
+# Perform KS test for normality on specified columns
+for col_name in columns_to_test:
+    data = df.select(col_name).toPandas()[col_name]
+    mean = np.mean(data)
+    std = np.std(data)
+    ks_stat, p_value = kstest(data, 'norm', args=(mean, std))
+    
+    # Print KS test results
+    print(f"{col_name} - KS Statistic: {ks_stat:.3f}, p-value: {p_value:.3g}")
+    if p_value < 0.05:
+        print(f"{col_name} is NOT normally distributed")
+    else:
+        print(f"{col_name} looks normal-ish")
+
+# COMMAND ----------
+
+# DBTITLE 1,Kolmogorov-Smirnov Test for Workout Type Distributions
+from scipy.stats import ks_2samp
+import pandas as pd
+
+workout_types = ["Cardio", "Strength", "Yoga", "None"]
+columns_to_test = ["Steps", "Heart_Rate_avg", "Calories_Burned"]
+
+results = []
+
+for col_name in columns_to_test:
+    for i in range(len(workout_types)):
+        for j in range(i + 1, len(workout_types)):
+            d1 = df.filter(df.Workout_Type == workout_types[i]).toPandas()[col_name]
+            d2 = df.filter(df.Workout_Type == workout_types[j]).toPandas()[col_name]
+            ks_stat, p_value = ks_2samp(d1, d2)
+            results.append({
+                'Comparison': f"{workout_types[i]} vs {workout_types[j]}",
+                'Column': col_name,
+                'KS_statistic': ks_stat,
+                'p_value': p_value
+            })
+
+# Highly significant (p < 0.05) AND KS_stat > 0.1-0.2: Distributions are different in a way that is likely to be meaningful.
+# p >= 0.05: You can't claim there's a significant difference.
+
+results_df = pd.DataFrame(results)
+display(results_df)
+# For your data, none of the fitness variables (Steps, Heart_Rate_avg, Calories_Burned) are statistically different in their distribution between any pair of workout types, at the 0.05 significance level.
+
+# COMMAND ----------
+
+from pyspark.sql.functions import expr
+from pyspark.ml.evaluation import BinaryClassificationEvaluator
+
+# Select the true labels and predicted probabilities
+ks_df = predictions.select("label", expr("probability[1]").alias("probability"))
+
+# Initialize BinaryClassificationEvaluator for KS test
+evaluator = BinaryClassificationEvaluator(rawPredictionCol="probability", labelCol="label", metricName="areaUnderROC")
+
+# Compute KS metric
+ks_metric = evaluator.evaluate(ks_df)
+
+# Display KS metric
+display(spark.createDataFrame([(ks_metric,)], ["KS_Metric"]))
+
+# COMMAND ----------
+
 # TODO
 #  Kolmogorov-Smirnov (KS) Test
 #  Jensen-Shannon Divergence (JSD)
