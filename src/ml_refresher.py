@@ -1,4 +1,10 @@
 # Databricks notebook source
+import mlflow
+
+mlflow.autolog(disable=True)
+
+# COMMAND ----------
+
 # MAGIC %sql
 # MAGIC select * from bronze.fitness_tracker_data
 
@@ -219,7 +225,35 @@ display(predictions.select("Steps", "Heart_Rate_avg", "Calories_Burned", "Workou
 
 # COMMAND ----------
 
-label_map = {i: label for i, label in enumerate(model.stages[0].labels)}
+import shap
+import numpy as np
+from pyspark.ml.linalg import DenseVector
+
+# Define prediction function for SHAP explainer
+# Converts numpy array to Spark DataFrame, applies model, and returns class probabilities
+def predict_fn(data_asarray):
+    features = [DenseVector(row) for row in data_asarray]
+    spark_df = spark.createDataFrame([(f,) for f in features], ["features"])
+    preds = rf_model.transform(spark_df).select("probability").toPandas()
+    # Return probability of positive class (index 0); adjust index for other classes
+    return np.array([p[0] for p in preds["probability"]])
+
+# Prepare background and test datasets for SHAP
+background_X = X[:100]  # Background dataset for Kernel SHAP
+test_X = X[:50]         # Test dataset to explain
+
+# Initialize SHAP KernelExplainer with prediction function and background data
+explainer = shap.KernelExplainer(predict_fn, background_X)
+
+# Compute SHAP values for test data; returns list of arrays (one per class) for classification
+shap_values = explainer.shap_values(test_X)
+
+# Plot SHAP summary plot
+# For binary classification, plot SHAP values of positive class (index 1)
+if isinstance(shap_values, list) and len(shap_values) == 2:
+    shap.summary_plot(shap_values[1], test_X, feature_names=feature_cols)
+else:
+    shap.summary_plot(shap_values, test_X, feature_names=feature_cols)
 
 # COMMAND ----------
 
