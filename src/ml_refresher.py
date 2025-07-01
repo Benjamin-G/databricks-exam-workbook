@@ -68,26 +68,52 @@ display(result)
 # DBTITLE 1,Simple model
 from pyspark.ml.feature import StringIndexer, VectorAssembler
 from pyspark.ml.classification import LogisticRegression
+import mlflow
+from mlflow.models import infer_signature
+import shap
+import matplotlib.pyplot as plt
 
 # Load data
 df = spark.table("bronze.fitness_tracker_data")
 
-# Prepare features and label
-indexer = StringIndexer(inputCol="Workout_Type", outputCol="label")
-df_indexed = indexer.fit(df).transform(df)
 
-assembler = VectorAssembler(inputCols=["Calories_Burned"], outputCol="features")
-df_features = assembler.transform(df_indexed)
+# Using mlflow to track the model
+with mlflow.start_run():
+    # Prepare features and label
+    indexer = StringIndexer(inputCol="Workout_Type", outputCol="label")
+    df_indexed = indexer.fit(df).transform(df)
 
-# Split data
-train_df, test_df = df_features.randomSplit([0.8, 0.2], seed=42)
+    # Assemble features
+    assembler = VectorAssembler(inputCols=["Calories_Burned"], outputCol="features")
+    df_features = assembler.transform(df_indexed)
 
-# Train model
-lr = LogisticRegression(featuresCol="features", labelCol="label")
-model = lr.fit(train_df)
+    # Split data into training and test sets
+    train_df, test_df = df_features.randomSplit([0.8, 0.2], seed=42)
 
-# Display model summary
-display(model.summary.predictions)
+    # Initialize Logistic Regression model
+    lr = LogisticRegression(featuresCol="features", labelCol="label")
+    # Train the model
+    model = lr.fit(train_df)
+
+    # Log a parameter (example: number of trees, though not applicable for Logistic Regression)
+    mlflow.log_param("num_trees", 10)
+
+    # Make predictions on the test set
+    predictions = model.transform(test_df)
+
+    # Calculate accuracy
+    accuracy = predictions.filter(
+        predictions.label == predictions.prediction
+    ).count() / float(test_df.count())
+
+    # Log the accuracy metric
+    mlflow.log_metric("accuracy", accuracy)
+
+    # Infer the model signature
+    signature = infer_signature(train_df, predictions)
+
+    # Log the model
+    mlflow.spark.log_model(model, "learning_model", signature=signature)
 
 # COMMAND ----------
 
@@ -133,6 +159,7 @@ display(predictions.withColumn("Diff", col("Calories_Burned") - col("prediction"
 
 # COMMAND ----------
 
+# DBTITLE 1,Linear Regression Model Evaluation Metrics
 from pyspark.ml.evaluation import RegressionEvaluator
 
 # Load data
