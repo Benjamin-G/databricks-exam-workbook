@@ -1,0 +1,79 @@
+#[tool.pytest.ini_options]
+#testpaths = ["tests"]
+#pythonpath = [".", "src"]
+#log_cli = true
+#log_level = 'INFO'
+#asyncio_mode = "auto"
+
+#filterwarnings = []
+
+[tool.ruff]
+line-length = 127
+fix = true
+
+extend-select = [
+    # pyflakes
+    "F",
+    # pycodestyle
+    "E",
+    "W",
+    # flake8-2020
+    "YTT",
+    # flake8-bugbear
+    "B",
+    # flake8-quotes
+    "Q",
+    # pylint
+    "PLE", "PLR", "PLW",
+    # misc lints
+    "PIE",
+    # tidy imports
+    "TID",
+    # https://beta.ruff.rs/docs/rules/#mccabe-c90
+    "C90", # Complexity (mccabe+) & comprehensions
+    # https://beta.ruff.rs/docs/rules/#pyupgrade-up
+    "UP", # pyupgrade
+    "RUF", # ruff
+    "PD", # pandas
+    "SIM", # flake8-simplify
+    "C4", # flake8-comprehensions
+    "COM", # flake8-commas
+    'Q',
+    'RUF100',
+    'C90',
+    'UP',
+    'I'
+]
+
+ignore = [
+    # false positives
+    "B019",
+    # Loop control variable overrides iterable it iterates
+    "B020",
+    # Function definition does not bind loop variable
+    "B023",
+    # Within an except clause, raise exceptions with ...
+    "B904",
+    # module level import not at top of file
+    "E402",
+    # do not assign a lambda expression, use a def
+    "E731",
+    # Too many returns
+    "PLR0911",
+    # Too many branches
+    "PLR0912",
+    # Too many arguments to function call
+    "PLR0913",
+    # Too many statements
+    "PLR0915",
+    # Magic number
+    "PLR2004",
+]
+[tool.ruff.mccabe]
+max-complexity = 10
+
+[tool.ruff.flake8-import-conventions]
+[tool.ruff.flake8-import-conventions.aliases]
+# Declare the default aliases.
+numpy = "np"
+pandas = "pd"
