@@ -12,7 +12,7 @@ mlflow.autolog(disable=True)
 
 # DBTITLE 1,Numerical Simple Monitoring Statistics
 from pyspark.sql.functions import expr, max, mean, min, stddev, variance
-
+ 
 df = spark.table("bronze.fitness_tracker_data").select("Steps", "Heart_Rate_avg", "Calories_Burned")
 
 stats = df.agg(
@@ -22,12 +22,14 @@ stats = df.agg(
     variance("Steps").alias("Steps_Variance"),
     min("Steps").alias("Steps_Min"),
     max("Steps").alias("Steps_Max"),
+
     mean("Heart_Rate_avg").alias("Heart_Rate_avg_Mean"),
     expr("percentile_approx(Heart_Rate_avg, 0.5)").alias("Heart_Rate_avg_Median"),
     stddev("Heart_Rate_avg").alias("Heart_Rate_avg_StdDev"),
     variance("Heart_Rate_avg").alias("Heart_Rate_avg_Variance"),
     min("Heart_Rate_avg").alias("Heart_Rate_avg_Min"),
     max("Heart_Rate_avg").alias("Heart_Rate_avg_Max"),
+
     mean("Calories_Burned").alias("Calories_Burned_Mean"),
     expr("percentile_approx(Calories_Burned, 0.5)").alias("Calories_Burned_Median"),
     stddev("Calories_Burned").alias("Calories_Burned_StdDev"),
@@ -135,9 +137,7 @@ indexer = StringIndexer(inputCol="Workout_Type", outputCol="Workout_Type_Indexed
 encoder = OneHotEncoder(inputCol="Workout_Type_Indexed", outputCol="Workout_Type_OHE", handleInvalid="keep")
 
 # Assemble features
-assembler = VectorAssembler(
-    inputCols=["Steps", "Heart_Rate_avg", "Workout_Type_OHE"], outputCol="features", handleInvalid="skip"
-)
+assembler = VectorAssembler(inputCols=["Steps", "Heart_Rate_avg", "Workout_Type_OHE"], outputCol="features", handleInvalid="skip")
 
 # Define regressor
 rf = RandomForestRegressor(featuresCol="features", labelCol="Calories_Burned", seed=42)
@@ -175,9 +175,7 @@ df = df.filter((col("Steps") >= 0) & (col("Heart_Rate_avg") > 0) & (col("Calorie
 indexer = StringIndexer(inputCol="Workout_Type", outputCol="Workout_Type_Indexed", handleInvalid="skip")
 
 # Assemble features
-assembler = VectorAssembler(
-    inputCols=["Steps", "Heart_Rate_avg", "Workout_Type_Indexed"], outputCol="features", handleInvalid="skip"
-)
+assembler = VectorAssembler(inputCols=["Steps", "Heart_Rate_avg", "Workout_Type_Indexed"], outputCol="features", handleInvalid="skip")
 
 # Define regressor
 lr = LinearRegression(featuresCol="features", labelCol="Calories_Burned")
@@ -230,9 +228,7 @@ df = df.filter((col("Steps") >= 0) & (col("Heart_Rate_avg") > 0) & (col("Calorie
 label_indexer = StringIndexer(inputCol="Workout_Type", outputCol="label", handleInvalid="skip")
 
 # Assemble features
-assembler = VectorAssembler(
-    inputCols=["Steps", "Heart_Rate_avg", "Calories_Burned"], outputCol="features", handleInvalid="skip"
-)
+assembler = VectorAssembler(inputCols=["Steps", "Heart_Rate_avg", "Calories_Burned"], outputCol="features", handleInvalid="skip")
 
 # Define classifier
 rf = RandomForestClassifier(featuresCol="features", labelCol="label", seed=42)
@@ -275,10 +271,9 @@ def predict_fn(data_asarray):
     # Return probability of positive class (index 0); adjust index for other classes
     return np.array([p[0] for p in preds["probability"]])
 
-
 # Prepare background and test datasets for SHAP
 background_X = X[:100]  # Background dataset for Kernel SHAP
-test_X = X[:50]  # Test dataset to explain
+test_X = X[:50]         # Test dataset to explain
 
 # Initialize SHAP KernelExplainer with prediction function and background data
 explainer = shap.KernelExplainer(predict_fn, background_X)
@@ -339,14 +334,12 @@ for col_name in columns_to_test:
             d1 = df.filter(df.Workout_Type == workout_types[i]).toPandas()[col_name]
             d2 = df.filter(df.Workout_Type == workout_types[j]).toPandas()[col_name]
             ks_stat, p_value = ks_2samp(d1, d2)
-            results.append(
-                {
-                    "Comparison": f"{workout_types[i]} vs {workout_types[j]}",
-                    "Column": col_name,
-                    "KS_statistic": ks_stat,
-                    "p_value": p_value,
-                }
-            )
+            results.append({
+                "Comparison": f"{workout_types[i]} vs {workout_types[j]}",
+                "Column": col_name,
+                "KS_statistic": ks_stat,
+                "p_value": p_value,
+            })
 
 # Highly significant (p < 0.05) AND KS_stat > 0.1-0.2: Distributions are different in a way that is likely to be meaningful.
 # p >= 0.05: You can't claim there's a significant difference.
@@ -400,18 +393,14 @@ for col in columns_to_test:
             jsd = jensenshannon(p, q, base=2)
             divergence = jsd**2  # True JSD, in [0,1]; jsd is sqrt(JSD)
 
-            results_jsd.append(
-                {
-                    "Comparison": f"{workout_types[i]} vs {workout_types[j]}",
-                    "Column": col,
-                    "JSD": divergence,  # use jsd if you want sqrt(JSD), divergence for JSD proper
-                }
-            )
+            results_jsd.append({
+                "Comparison": f"{workout_types[i]} vs {workout_types[j]}",
+                "Column": col,
+                "JSD": divergence,  # use jsd if you want sqrt(JSD), divergence for JSD proper
+            })
 
 # Results to DataFrame
 results_df = pd.DataFrame(results_jsd)
-
-
 def interpret_jsd(jsd):
     if jsd < 0.05:
         return "Very similar"
@@ -419,7 +408,6 @@ def interpret_jsd(jsd):
         return "Somewhat different"
     else:
         return "Noticeably different"
-
 
 results_df["Divergence"] = results_df["JSD"].apply(interpret_jsd)
 display(results_df)

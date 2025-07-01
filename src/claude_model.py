@@ -13,7 +13,7 @@ from pyspark.ml.evaluation import BinaryClassificationEvaluator, MulticlassClass
 from pyspark.ml.feature import StandardScaler, StringIndexer, VectorAssembler
 from pyspark.sql.functions import col, count, udf, when
 from pyspark.sql.types import StringType
-
+ 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -42,18 +42,18 @@ def validate_and_clean_data(df):
     df_clean = df.dropna()
     after_dropna = df_clean.count()
     logger.info(
-        f"After dropping nulls: {after_dropna} rows ({(initial_count - after_dropna) / initial_count * 100:.2f}% removed)"
-    )
+        f"After dropping nulls: {after_dropna} rows ({(initial_count - after_dropna) / initial_count * 100:.2f}% removed)")
 
     # Filter out invalid data
     df_clean = df_clean.filter(
-        (col("Steps") >= 0) & (col("Heart_Rate_avg") > 0) & (col("Calories_Burned") >= 0),
+        (col("Steps") >= 0) &
+        (col("Heart_Rate_avg") > 0) &
+        (col("Calories_Burned") >= 0),
     )
 
     final_count = df_clean.count()
     logger.info(
-        f"After filtering invalid data: {final_count} rows ({(after_dropna - final_count) / after_dropna * 100:.2f}% removed)"
-    )
+        f"After filtering invalid data: {final_count} rows ({(after_dropna - final_count) / after_dropna * 100:.2f}% removed)")
 
     # Show data quality summary
     logger.info("Data quality summary:")
@@ -98,7 +98,7 @@ def create_preprocessing_pipeline(feature_cols, target_col, scale_features=True)
         stages.append(scaler)
 
     return stages
-
+ 
 
 def evaluate_model(predictions, num_classes) -> Dict[str, float]:
     """Comprehensive model evaluation"""
@@ -160,14 +160,13 @@ def create_confusion_matrix_plot(predictions, label_map):
 
         # Create confusion matrix
         from sklearn.metrics import confusion_matrix
-
         cm = confusion_matrix(pred_df["actual_label"], pred_df["predicted_label"])
 
         # Plot
         plt.figure(figsize=(8, 6))
-        sns.heatmap(
-            cm, annot=True, fmt="d", cmap="Blues", xticklabels=list(label_map.values()), yticklabels=list(label_map.values())
-        )
+        sns.heatmap(cm, annot=True, fmt="d", cmap="Blues",
+                    xticklabels=list(label_map.values()),
+                    yticklabels=list(label_map.values()))
         plt.title("Confusion Matrix")
         plt.xlabel("Predicted Label")
         plt.ylabel("Actual Label")
@@ -189,12 +188,10 @@ def create_feature_importance_plot(model, feature_cols):
         importances = rf_model.featureImportances.toArray()
 
         # Create DataFrame for plotting
-        importance_df = pd.DataFrame(
-            {
-                "feature": feature_cols,
-                "importance": importances,
-            }
-        ).sort_values("importance", ascending=True)
+        importance_df = pd.DataFrame({
+            "feature": feature_cols,
+            "importance": importances,
+        }).sort_values("importance", ascending=True)
 
         # Plot
         plt.figure(figsize=(10, 6))
@@ -234,10 +231,7 @@ def main():
         # Load and validate data
         logger.info("Loading data...")
         df = spark.table("bronze.fitness_tracker_data").select(
-            "Steps",
-            "Heart_Rate_avg",
-            "Calories_Burned",
-            "Workout_Type",
+            "Steps", "Heart_Rate_avg", "Calories_Burned", "Workout_Type",
         )
 
         df_clean = validate_and_clean_data(df)
@@ -269,9 +263,7 @@ def main():
 
             # Create preprocessing pipeline
             preprocessing_stages = create_preprocessing_pipeline(
-                FEATURE_COLS,
-                TARGET_COL,
-                SCALE_FEATURES,
+                FEATURE_COLS, TARGET_COL, SCALE_FEATURES,
             )
 
             # Define Random Forest classifier
@@ -306,12 +298,10 @@ def main():
             # Make predictions
             logger.info("Making predictions...")
             train_predictions = model.transform(train_df).withColumn(
-                "predicted_label",
-                map_prediction_udf(col("prediction")),
+                "predicted_label", map_prediction_udf(col("prediction")),
             )
             test_predictions = model.transform(test_df).withColumn(
-                "predicted_label",
-                map_prediction_udf(col("prediction")),
+                "predicted_label", map_prediction_udf(col("prediction")),
             )
 
             # Evaluate model
@@ -373,12 +363,8 @@ def main():
             # Display sample predictions
             logger.info("Sample predictions:")
             sample_predictions = test_predictions.select(
-                "Steps",
-                "Heart_Rate_avg",
-                "Calories_Burned",
-                "Workout_Type",
-                "predicted_label",
-                "prediction",
+                "Steps", "Heart_Rate_avg", "Calories_Burned",
+                "Workout_Type", "predicted_label", "prediction",
             ).limit(20)
 
             sample_predictions.show()
@@ -454,7 +440,9 @@ def validate_and_clean_data(df):
 
     # Filter out invalid data
     df_clean = df_clean.filter(
-        (col("Steps") >= 0) & (col("Heart_Rate_avg") > 0) & (col("Calories_Burned") >= 0),
+        (col("Steps") >= 0)
+        & (col("Heart_Rate_avg") > 0)
+        & (col("Calories_Burned") >= 0),
     )
 
     final_count = df_clean.count()
@@ -468,7 +456,9 @@ def validate_and_clean_data(df):
 
     # Check class distribution
     logger.info("Workout type distribution:")
-    class_dist = df_clean.groupBy("Workout_Type").count().orderBy("count", ascending=False)
+    class_dist = (
+        df_clean.groupBy("Workout_Type").count().orderBy("count", ascending=False)
+    )
     class_dist.show()
 
     return df_clean
@@ -509,8 +499,7 @@ def create_additional_features(df):
 
     # Calories per heart rate (efficiency metric)
     df = df.withColumn(
-        "calorie_efficiency",
-        col("Calories_Burned") / (col("Heart_Rate_avg") + 1),
+        "calorie_efficiency", col("Calories_Burned") / (col("Heart_Rate_avg") + 1),
     )
 
     return df
@@ -526,20 +515,18 @@ def get_enhanced_feature_columns():
 
 
 def create_preprocessing_pipeline(
-    base_features: List[str],
-    engineered_features: List[str],
-    categorical_features: List[str],
-    target_col: str,
-    scale_features: bool = True,
+        base_features: List[str],
+        engineered_features: List[str],
+        categorical_features: List[str],
+        target_col: str,
+        scale_features: bool = True,
 ) -> List:
     """Create preprocessing pipeline with all feature types"""
     stages = []
 
     # Index label column
     label_indexer = StringIndexer(
-        inputCol=target_col,
-        outputCol="label",
-        handleInvalid="skip",
+        inputCol=target_col, outputCol="label", handleInvalid="skip",
     )
     stages.append(label_indexer)
 
@@ -568,10 +555,7 @@ def create_preprocessing_pipeline(
     # Optional feature scaling
     if scale_features:
         scaler = StandardScaler(
-            inputCol="raw_features",
-            outputCol="features",
-            withStd=True,
-            withMean=True,
+            inputCol="raw_features", outputCol="features", withStd=True, withMean=True,
         )
         stages.append(scaler)
 
@@ -584,33 +568,25 @@ def evaluate_model(predictions, num_classes) -> Dict[str, float]:
 
     # Accuracy
     accuracy_evaluator = MulticlassClassificationEvaluator(
-        labelCol="label",
-        predictionCol="prediction",
-        metricName="accuracy",
+        labelCol="label", predictionCol="prediction", metricName="accuracy",
     )
     metrics["accuracy"] = accuracy_evaluator.evaluate(predictions)
 
     # F1 Score
     f1_evaluator = MulticlassClassificationEvaluator(
-        labelCol="label",
-        predictionCol="prediction",
-        metricName="f1",
+        labelCol="label", predictionCol="prediction", metricName="f1",
     )
     metrics["f1_score"] = f1_evaluator.evaluate(predictions)
 
     # Precision
     precision_evaluator = MulticlassClassificationEvaluator(
-        labelCol="label",
-        predictionCol="prediction",
-        metricName="weightedPrecision",
+        labelCol="label", predictionCol="prediction", metricName="weightedPrecision",
     )
     metrics["precision"] = precision_evaluator.evaluate(predictions)
 
     # Recall
     recall_evaluator = MulticlassClassificationEvaluator(
-        labelCol="label",
-        predictionCol="prediction",
-        metricName="weightedRecall",
+        labelCol="label", predictionCol="prediction", metricName="weightedRecall",
     )
     metrics["recall"] = recall_evaluator.evaluate(predictions)
 
@@ -700,11 +676,7 @@ def perform_hyperparameter_tuning(df_enhanced, base_features, engineered_feature
 
     # Create preprocessing pipeline
     preprocessing_stages = create_preprocessing_pipeline(
-        base_features,
-        engineered_features,
-        categorical_features,
-        target_col,
-        True,
+        base_features, engineered_features, categorical_features, target_col, True,
     )
 
     # Define Random Forest
@@ -714,19 +686,15 @@ def perform_hyperparameter_tuning(df_enhanced, base_features, engineered_feature
     pipeline = Pipeline(stages=preprocessing_stages + [rf])
 
     # Parameter grid for tuning
-    paramGrid = (
-        ParamGridBuilder()
-        .addGrid(rf.numTrees, [100, 200])
-        .addGrid(rf.maxDepth, [10, 15])
-        .addGrid(rf.subsamplingRate, [0.8, 0.9])
-        .build()
-    )
+    paramGrid = (ParamGridBuilder()
+                 .addGrid(rf.numTrees, [100, 200])
+                 .addGrid(rf.maxDepth, [10, 15])
+                 .addGrid(rf.subsamplingRate, [0.8, 0.9])
+                 .build())
 
     # Cross validator
     evaluator = MulticlassClassificationEvaluator(
-        labelCol="label",
-        predictionCol="prediction",
-        metricName="f1",
+        labelCol="label", predictionCol="prediction", metricName="f1",
     )
 
     crossval = CrossValidator(
@@ -781,10 +749,7 @@ def main():
         # Load and validate data
         logger.info("Loading data...")
         df = spark.table("bronze.fitness_tracker_data").select(
-            "Steps",
-            "Heart_Rate_avg",
-            "Calories_Burned",
-            "Workout_Type",
+            "Steps", "Heart_Rate_avg", "Calories_Burned", "Workout_Type",
         )
 
         df_clean = validate_and_clean_data(df)
@@ -793,18 +758,20 @@ def main():
         df_enhanced = create_additional_features(df_clean)
 
         # Get feature column lists
-        base_features, engineered_features, categorical_features = get_enhanced_feature_columns()
-        all_feature_names = base_features + engineered_features + [f"{cat}_indexed" for cat in categorical_features]
+        base_features, engineered_features, categorical_features = (
+            get_enhanced_feature_columns()
+        )
+        all_feature_names = (
+                base_features
+                + engineered_features
+                + [f"{cat}_indexed" for cat in categorical_features]
+        )
 
         # Optional hyperparameter tuning
         if ENABLE_HYPERPARAMETER_TUNING:
             logger.info("Performing hyperparameter tuning...")
             cv_model, best_params = perform_hyperparameter_tuning(
-                df_enhanced,
-                base_features,
-                engineered_features,
-                categorical_features,
-                TARGET_COL,
+                df_enhanced, base_features, engineered_features, categorical_features, TARGET_COL,
             )
             # Update RF_PARAMS with best found parameters
             for param, value in best_params.items():
@@ -832,8 +799,7 @@ def main():
             # Split data
             logger.info("Splitting data...")
             train_df, test_df = df_enhanced.randomSplit(
-                [1 - TEST_SIZE, TEST_SIZE],
-                seed=RANDOM_SEED,
+                [1 - TEST_SIZE, TEST_SIZE], seed=RANDOM_SEED,
             )
 
             train_count = train_df.count()
@@ -854,10 +820,7 @@ def main():
 
             # Define Random Forest classifier
             rf = RandomForestClassifier(
-                featuresCol="features",
-                labelCol="label",
-                seed=RANDOM_SEED,
-                **RF_PARAMS,
+                featuresCol="features", labelCol="label", seed=RANDOM_SEED, **RF_PARAMS,
             )
 
             # Create complete pipeline
@@ -880,19 +843,16 @@ def main():
 
             # Create UDF to map predictions back to labels
             map_prediction_udf = udf(
-                lambda x: label_map.get(int(x), "Unknown"),
-                StringType(),
+                lambda x: label_map.get(int(x), "Unknown"), StringType(),
             )
 
             # Make predictions
             logger.info("Making predictions...")
             train_predictions = model.transform(train_df).withColumn(
-                "predicted_label",
-                map_prediction_udf(col("prediction")),
+                "predicted_label", map_prediction_udf(col("prediction")),
             )
             test_predictions = model.transform(test_df).withColumn(
-                "predicted_label",
-                map_prediction_udf(col("prediction")),
+                "predicted_label", map_prediction_udf(col("prediction")),
             )
 
             # Evaluate model
